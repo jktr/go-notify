@@ -1,4 +1,4 @@
-module github.com/esiqveland/notify
+module github.com/jktr/go-notify
 
 go 1.13
 

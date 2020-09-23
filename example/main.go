@@ -6,8 +6,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/esiqveland/notify"
 	"github.com/godbus/dbus/v5"
+	"github.com/jktr/go-notify"
 )
 
 func main() {
