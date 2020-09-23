@@ -82,8 +82,6 @@ func main() {
 		notify.WithOnAction(onAction),
 		// closed event handler
 		notify.WithOnClosed(onClosed),
-		// override with custom logger
-		notify.WithLogger(log.New(os.Stdout, "notify: ", log.Flags())),
 	)
 	if err != nil {
 		log.Fatalln(err.Error())

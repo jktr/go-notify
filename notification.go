@@ -3,7 +3,6 @@ package notify
 import (
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/godbus/dbus/v5"
@@ -181,22 +180,10 @@ type notifier struct {
 	onClosed NotificationClosedHandler
 	onAction ActionInvokedHandler
 	wg       *sync.WaitGroup
-	log      logger
-}
-
-type logger interface {
-	Printf(format string, v ...interface{})
 }
 
 // option overrides certain parts of a Notifier
 type option func(*notifier)
-
-// WithLogger sets a new logger func
-func WithLogger(logz logger) option {
-	return func(n *notifier) {
-		n.log = logz
-	}
-}
 
 // WithOnAction sets ActionInvokedHandler handler
 func WithOnAction(h ActionInvokedHandler) option {
@@ -222,7 +209,6 @@ func New(conn *dbus.Conn, opts ...option) (Notifier, error) {
 		wg:       &sync.WaitGroup{},
 		onClosed: func(s *NotificationClosedSignal) {},
 		onAction: func(s *ActionInvokedSignal) {},
-		log:      &loggerWrapper{"notify: "},
 	}
 
 	for _, val := range opts {
@@ -254,7 +240,6 @@ func (n notifier) eventLoop() {
 		case signal := <-n.signal:
 			n.handleSignal(signal)
 		case <-n.done:
-			n.log.Printf("Got Close() signal, shutting down...")
 			return
 		}
 	}
@@ -275,8 +260,6 @@ func (n notifier) handleSignal(signal *dbus.Signal) {
 			ActionKey: signal.Body[1].(string),
 		}
 		n.onAction(is)
-	default:
-		n.log.Printf("Received unknown signal: %+v", signal)
 	}
 }
 
@@ -397,12 +380,4 @@ func (n *notifier) Close() error {
 	n.wg.Wait()
 
 	return errRemoveMatch
-}
-
-type loggerWrapper struct {
-	prefix string
-}
-
-func (l *loggerWrapper) Printf(format string, v ...interface{}) {
-	log.Printf(l.prefix+format, v...)
 }
