@@ -1,47 +1,32 @@
-# notify
+# go-notify
 
-[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/esiqveland/notify?tab=doc)
-[![Go Report Card](https://goreportcard.com/badge/github.com/esiqveland/notify)](https://goreportcard.com/report/github.com/esiqveland/notify)
-[![CircleCI](https://circleci.com/gh/esiqveland/notify.svg?style=svg)](https://circleci.com/gh/esiqveland/notify)
+[![GoDoc](https://godoc.org/github.com/jktr/go-notify?status.svg)](https://godoc.org/github.com/jktr/go-notify)
 
-Notify is a go library for interacting with the dbus notification service defined by freedesktop.org:
-https://developer.gnome.org/notification-spec/
+`go-notify` is a go client library for the [freedesktop.org desktop notification spec](https://specifications.freedesktop.org/notification-spec/latest/index.html
+).  
+You'll probably mainly want to use it to send desktop notifications over dbus.
 
-`notify` can deliver desktop notifications over dbus, ala how libnotify does it.
+It's based on [godbus](https://github.com/godbus/dbus) internally,
+and serves a similar role to the familiar `libnotify` and `notify-send`.
 
-Please note `notify` is still in motion and APIs are not locked until a 1.0 is released.
+Download via `$ go get -u github.com/jktr/go-notify`.
 
-More testers are very welcome =)
+## Getting Started
 
-Depends on:
- - [godbus](https://github.com/godbus/dbus).
+Take a look at the [example](_example/main.go).  
+You gun it with `$ go run ./main.go`.
 
-## Changelog
+# Fork
 
-- v0.9.0: [some breaking changes](https://github.com/esiqveland/notify/releases/tag/v0.9.0)
-- v0.2.1: dbus: gomod: lock to dbus v5
-- v0.2.0: `Notifier.Close()` no longer calls `.Close()` on the underlying `dbus.Conn`
+This is a fork of [esiqveland](https://github.com/esiqveland)'s [notify](https://github.com/esiqveland/notify).
 
-## Quick intro
-See example: [main.go](https://github.com/esiqveland/notify/blob/master/example/main.go).
+Major changes are:
+  - api support for `urgency` and inline `image-data` hints
+  - notification timeouts now use time.Duration
+  - some refactoring for ease of use and api consistency
+  - removed embedded logger for easier caller-controlled logging
 
-Clone repo and go to examples folder:
-
-``` go run main.go ```
-
-
-## TODO
-
-- [x] Add callback support aka dbus signals.
-- [ ] Tests. I am very interested in any ideas for writing some (useful) tests for this.
-
-## See also
-
-The Gnome notification spec https://developer.gnome.org/notification-spec/.
-
-
-## Contributors
-Thanks to user [emersion](https://github.com/emersion) for great ideas on receiving signals.
+Some portions of this can probably be upstreamed.
 
 ## License
 

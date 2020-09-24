@@ -22,29 +22,40 @@ const (
 	channelBufferSize = 10
 )
 
+// A Notification ID, to be used as a handle-like type.
 type ID uint32
 
-// Notification holds all information needed for creating a notification
-// The zero value for a Notification is legal notification, albeit
-// not a particularly useful one. You should at least set a Summary.
+// Spec: Table 6. Notify Parameters
 type Notification struct {
+	// May be displayed to the user.
 	AppName string
+	// Spec: http://standards.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html
+	AppIcon string
+
 	// Setting ReplacesID atomically replaces another notification with this ID.
 	ReplacesID ID
-	// See predefined icons here: http://standards.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html
-	AppIcon string
+
 	Summary string
-	Body    string
+	// Some clients diplay the whole body in addition to,
+	// or instead of, the summary (if not empty).
+	Body string
+
+	// A user may invoke these on a Notification.
+	// Use Notifier to subscribe to these events.
 	Actions []NotificationAction
-	Hints   map[string]dbus.Variant
+
+	// Extension Mechanism for Notification Metadata.
+	// Spec: https://specifications.freedesktop.org/notification-spec/latest/ar01s08.html
+	Hints map[string]dbus.Variant
 
 	// Strategy for notification expiration
-	Expire NotificationExpiry
+	Expire Expiry
 	// Timeout for the eponymous NotificationExpiry Strategy
 	Timeout time.Duration
 }
 
-// NotificationAction represents an possible reaction to a notification
+// NotificationAction represents a possible reaction to a notification
+// This isn't a map[Name]Summary, as ordering of actions may be relevant.
 type NotificationAction struct {
 	// Identifier for this action.
 	Name string
@@ -52,19 +63,22 @@ type NotificationAction struct {
 	Summary string
 }
 
-type NotificationExpiry int32
+// Expiry specifies the policy for time-based notification auto-expiry.
+type Expiry int32
 
 const (
-	// Uses server's default expiry behaviour.
-	Server NotificationExpiry = iota - 1
-	// Uses the Notification's Timeout duration.
+	// Uses notification server's default expiry behaviour.
+	Server Expiry = iota - 1
+	// Uses the Timeout from in Notification.
 	Timeout
-	// Never exire this notification.
+	// Never exire this notification automatically.
 	Never
 )
 
-// SendNotification is provided for convenience.
-// Use if you only want to deliver a notification and dont care about events.
+// See Notifier.Send
+// This is provided for convenience; use Notifier if
+// you'd like notification close events or user actions.
+// Spec: org.freedesktop.Notifications.Notify
 func Send(conn *dbus.Conn, note *Notification) (ID, error) {
 	actions := []string{}
 	if note.Actions != nil {
@@ -100,6 +114,8 @@ func Send(conn *dbus.Conn, note *Notification) (ID, error) {
 	return ret, err
 }
 
+// see Notifier.Dismiss
+// Spec: org.freedesktop.Notifications.CloseNotification
 func Dismiss(conn *dbus.Conn, id ID) error {
 	if id == 0 {
 		return errors.New("notification IDs must be greater than zero")
@@ -110,8 +126,7 @@ func Dismiss(conn *dbus.Conn, id ID) error {
 	return call.Err
 }
 
-// ServerInfo is a holder for information returned by
-// GetServerInformation call.
+// Spec: Table 7. GetServerInformation Return Values
 type ServerInfo struct {
 	Name        string
 	Vendor      string
@@ -120,6 +135,7 @@ type ServerInfo struct {
 }
 
 // see Notifier.GetServerInfo
+// Spec: org.freedesktop.Notifications.GetServerInformation
 func GetServerInfo(conn *dbus.Conn) (*ServerInfo, error) {
 	obj := conn.Object(dbusNotificationsInterface, dbusObjectPath)
 	if obj == nil {
@@ -137,6 +153,7 @@ func GetServerInfo(conn *dbus.Conn) (*ServerInfo, error) {
 }
 
 // see Notifier.GetServerCapabilities
+// Spec: org.freedesktop.Notifications.GetCapabilities
 func GetServerCapabilities(conn *dbus.Conn) ([]string, error) {
 	obj := conn.Object(dbusNotificationsInterface, dbusObjectPath)
 	call := obj.Call(callGetCapabilities, 0)

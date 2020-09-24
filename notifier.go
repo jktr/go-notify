@@ -2,21 +2,21 @@ package notify
 
 import "github.com/godbus/dbus/v5"
 
-// Notifier is an interface implementing the operations supported by the
-// Freedesktop DBus Notifications object.
+// Notifier is an interface implementing the operations
+// supported by the Freedesktop DBus Notifications object.
 //
-// New() sets up a Notifier that listens on dbus' signals regarding
-// Notifications: NotificationClosed and ActionInvoked.
+// In contrast to the top-level convenience methods, this
+// type listens to notification action and close events events.
+// These are delivered to handlers, which are each invoked in a
+// fresh gouroutine.
 //
-// Signal delivery works by subscribing to all signals regarding Notifications,
-// which means you will see signals for Notifications also from other sources,
-// not just the latest you sent
+// Note that Signal delivery currently works by subscribing to
+// all signals, only filtering on signal type. You will see
+// signals for Notifications that other sources have sent.
+// Use Send's return value to filter for relevant Notifications.
 //
-// Users that only want to send a simple notification, but don't care about
-// interacting with signals, can use exported method: SendNotification(conn, Notification)
-//
-// Caller is responsible for calling Close() before exiting,
-// to shut down event loop and cleanup dbus registration.
+// Notifier.Close() should be called before shutting down
+// the underlying connection to ensure a clean shutdown.
 type Notifier interface {
 	Send(n *Notification) (ID, error)
 	Dismiss(id ID) error
@@ -25,20 +25,21 @@ type Notifier interface {
 	Close() error
 }
 
-// Reason for the closed notification
+// Reason for notification close on server side.
+// Spec: Table 8. NotificationClosed Parameters
 type CloseReason uint32
 
 const (
-	// Expired when a notification expired
+	// Notifcation reached a Timeout and expired
 	Expired CloseReason = iota + 1
 
-	// DismissedByUser when a notification has been dismissed by a user
+	// A user dismissed the notification
 	DismissedByUser
 
-	// ClosedByCall when a notification has been closed by a call to CloseNotification
+	// caused by org.freedesktop.Notifications.CloseNotification
 	DismissedByCall
 
-	// Unknown when as notification has been closed for an unknown reason
+	// Undefined or Reserved reasons
 	Unknown
 )
 
@@ -57,19 +58,21 @@ func (r CloseReason) String() string {
 	}
 }
 
-// NotificationClosedHandler is called when we receive a NotificationClosed signal
+// Called on receipt of a notification close event
+// Spec: org.freedesktop.Notifications.NotificationClosed
 type NotificationClosedHandler func(id ID, reason CloseReason)
 
-// ActionInvokedHandler is called when we receive a signal that one of the action_keys was invoked.
+// Called on receipt of a notification action invokation.
 //
-// Note that invoking an action often also produces a NotificationClosedSignal,
-// so you might receive both a Closed signal and a ActionInvoked signal.
+// Note that many server implementations dismiss notifications
+// immediately before/after/during invocation of an action.
+// As a result, you may see Close and Action events about
+// the same notification in close temporal proximity.
 //
-// I suspect this detail is implementation specific for the UI interaction,
-// and does at least happen on XFCE4.
+// Spec: org.freedesktop.Notifications.ActionInvoked
 type ActionInvokedHandler func(id ID, actionName string)
 
-// notifier implements Notifier interface
+// implements Notifier
 type notifier struct {
 	conn     *dbus.Conn
 	signal   chan *dbus.Signal
@@ -77,25 +80,21 @@ type notifier struct {
 	onAction ActionInvokedHandler
 }
 
-// option overrides certain parts of a Notifier
+// functional configuration type
 type option func(*notifier)
 
-// WithOnAction sets ActionInvokedHandler handler
 func WithOnAction(h ActionInvokedHandler) option {
 	return func(n *notifier) {
 		n.onAction = h
 	}
 }
 
-// WithOnClosed sets NotificationClosed handler
 func WithOnClosed(h NotificationClosedHandler) option {
 	return func(n *notifier) {
 		n.onClosed = h
 	}
 }
 
-// New creates a new Notifier using conn.
-// See also: Notifier
 func New(conn *dbus.Conn, opts ...option) (Notifier, error) {
 	n := &notifier{
 		conn:   conn,
@@ -106,18 +105,15 @@ func New(conn *dbus.Conn, opts ...option) (Notifier, error) {
 		val(n)
 	}
 
-	// add a listener (matcher) in dbus for signals to Notification interface.
+	// subscribe to notification signals
 	if err := n.conn.AddMatchSignal(
 		dbus.WithMatchObjectPath(dbusObjectPath),
 		dbus.WithMatchInterface(dbusNotificationsInterface),
 	); err != nil {
 		return nil, err
 	}
-
-	// register in dbus for signal delivery
 	n.conn.Signal(n.signal)
 
-	// start eventloop
 	go n.receiveSignals()
 
 	return n, nil
@@ -149,86 +145,52 @@ func (n *notifier) receiveSignals() {
 	}
 }
 
-// Close cleans up and shuts down signal delivery loop
+// Release Subscriptions to Notification Events
 func (n *notifier) Close() error {
 	// remove signal reception
 	n.conn.RemoveSignal(n.signal)
 
-	// unregister in dbus
+	// unsubscribe
 	return n.conn.RemoveMatchSignal(
 		dbus.WithMatchObjectPath(dbusObjectPath),
 		dbus.WithMatchInterface(dbusNotificationsInterface),
 	)
 }
 
-// Send sends a notification to the notification server and returns the ID or an error.
+// Send sends a notification to the notification server.
+// The returned ID can be used as a handle to dismiss the
+// notification and filter for Close/Action events in handlers.
 //
-// Implements dbus call:
-//
-//     UINT32 org.freedesktop.Notifications.Notify (
-//	       STRING app_name,
-//	       UINT32 replaces_id,
-//	       STRING app_icon,
-//	       STRING summary,
-//	       STRING body,
-//	       ARRAY  actions,
-//	       DICT   hints,
-//	       INT32  expire_timeout
-//     );
-//
-//		Name	    	Type	Description
-//		app_name		STRING	The optional name of the application sending the notification. Can be blank.
-//		replaces_id	    UINT32	The optional notification ID that this notification replaces. The server must atomically (ie with no flicker or other visual cues) replace the given notification with this one. This allows clients to effectively modify the notification while it's active. A value of value of 0 means that this notification won't replace any existing notifications.
-//		app_icon		STRING	The optional program icon of the calling application. Can be an empty string, indicating no icon.
-//		summary		    STRING	The summary text briefly describing the notification.
-//		body			STRING	The optional detailed body text. Can be empty.
-//		actions		    ARRAY	Actions are sent over as a list of pairs. Each even element in the list (starting at index 0) represents the identifier for the action. Each odd element in the list is the localized string that will be displayed to the user.
-//		hints	        DICT	Optional hints that can be passed to the server from the client program. Although clients and servers should never assume each other supports any specific hints, they can be used to pass along information, such as the process PID or window ID, that the server may be able to make use of. See Hints. Can be empty.
-//      expire_timeout  INT32   The timeout time in milliseconds since the display of the notification at which the notification should automatically close.
-//								If -1, the notification's expiration time is dependent on the notification server's settings, and may vary for the type of notification. If 0, never expire.
-//
-// If replaces_id is 0, the return value is a UINT32 that represent the notification.
-// It is unique, and will not be reused unless a MAXINT number of notifications have been generated.
-// An acceptable implementation may just use an incrementing counter for the ID.
-// The returned ID is always greater than zero. Servers must make sure not to return zero as an ID.
-//
-// If replaces_id is not 0, the returned value is the same value as replaces_id.
+// Spec: org.freedesktop.Notifications.Notify
 func (n *notifier) Send(note *Notification) (ID, error) {
 	return Send(n.conn, note)
 }
 
-// Dismiss causes a notification to be forcefully closed and removed from the user's view.
-// It can be used, for example, in the event that what the notification pertains to is no longer relevant,
-// or to cancel a notification with no expiration time.
+// Dismiss causes a notification to be forcefully closed
+// and removed from the user's view. It can be used, for example,
+// in the event that what the notification pertains to is no
+// longer relevant, or to cancel a notification with no expiration time.
 //
-// The NotificationClosed (dbus) signal is emitted by this method.
-// If the notification no longer exists, an empty D-BUS Error message is sent back.
+// Spec: org.freedesktop.Notifications.CloseNotification
 func (n *notifier) Dismiss(id ID) error {
 	return Dismiss(n.conn, id)
 }
 
-// GetCapabilities gets the capabilities of the notification server.
-// This call takes no parameters.
-// It returns an array of strings. Each string describes an optional capability implemented by the server.
+// Queries the notification server for the list
+// of optional features it supports.
 //
+// Spec: org.freedesktop.Notifications.GetCapabilities
 // See also: https://developer.gnome.org/notification-spec/
-// GetCapabilities provide an exported method for this operation
 func (n *notifier) GetServerCapabilities() ([]string, error) {
 	return GetServerCapabilities(n.conn)
 }
 
-// GetServerInfo returns the information on the server.
+// Queries the notification server for vendor, product,
+// and version metadata. Consider using a comibination
+// of Hints and Server Capabilities if you would like
+// to negotiate additional features.
 //
-// org.freedesktop.Notifications.GetServerInformation
-//
-//  GetServerInformation Return Values
-//
-//		Name		 Type	  Description
-//		name		 STRING	  The product name of the server.
-//		vendor		 STRING	  The vendor name. For example, "KDE," "GNOME," "freedesktop.org," or "Microsoft."
-//		version		 STRING	  The server's version number.
-//		spec_version STRING	  The specification version the server is compliant with.
-//
+// Spec: org.freedesktop.Notifications.GetServerInformation
 func (n *notifier) GetServerInfo() (*ServerInfo, error) {
 	return GetServerInfo(n.conn)
 }
