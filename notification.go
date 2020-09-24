@@ -143,7 +143,7 @@ func GetServerInformation(conn *dbus.Conn) (ServerInformation, error) {
 //
 // See also: https://developer.gnome.org/notification-spec/
 // GetCapabilities provide an exported method for this operation
-func GetCapabilities(conn *dbus.Conn) ([]string, error) {
+func GetServerCapabilities(conn *dbus.Conn) ([]string, error) {
 	obj := conn.Object(dbusNotificationsInterface, dbusObjectPath)
 	call := obj.Call(callGetCapabilities, 0)
 	if call.Err != nil {
@@ -171,7 +171,7 @@ func GetCapabilities(conn *dbus.Conn) ([]string, error) {
 // to shut down event loop and cleanup dbus registration.
 type Notifier interface {
 	SendNotification(n Notification) (uint32, error)
-	GetCapabilities() ([]string, error)
+	GetServerCapabilities() ([]string, error)
 	GetServerInformation() (ServerInformation, error)
 	CloseNotification(id uint32) (bool, error)
 	Close() error
@@ -274,8 +274,8 @@ func (n notifier) handleSignal(signal *dbus.Signal) {
 	}
 }
 
-func (n *notifier) GetCapabilities() ([]string, error) {
-	return GetCapabilities(n.conn)
+func (n *notifier) GetServerCapabilities() ([]string, error) {
+	return GetServerCapabilities(n.conn)
 }
 func (n *notifier) GetServerInformation() (ServerInformation, error) {
 	return GetServerInformation(n.conn)
