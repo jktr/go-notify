@@ -24,13 +24,13 @@ const (
 )
 
 // Notification holds all information needed for creating a notification
+// The zero value for a Notification is legal notification, albeit
+// not a particularly useful one. You should at least set a Summary.
 type Notification struct {
 	AppName string
-	// Setting ReplacesID atomically replaces the notification with this ID.
-	// Optional.
-	ReplacesID uint32
+	// Setting ReplacesID atomically replaces another notification with this ID.
+	ReplacesID ID
 	// See predefined icons here: http://standards.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html
-	// Optional.
 	AppIcon string
 	Summary string
 	Body    string
