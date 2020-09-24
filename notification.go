@@ -35,14 +35,21 @@ type Notification struct {
 	AppIcon string
 	Summary string
 	Body    string
-	// Actions are tuples of (action_key, label), e.g.: []string{"cancel", "Cancel", "open", "Open"}
-	Actions []string
+	Actions []NotificationAction
 	Hints   map[string]dbus.Variant
 
 	// Strategy for notification expiration
 	Expire NotificationExpiry
 	// Timeout for the eponymous NotificationExpiry Strategy
 	Timeout time.Duration
+}
+
+// NotificationAction represents an possible reaction to a notification
+type NotificationAction struct {
+	// Identifier for this action.
+	Name string
+	// String displayed to user.
+	Summary string
 }
 
 type NotificationExpiry int32
@@ -59,9 +66,13 @@ const (
 // SendNotification is provided for convenience.
 // Use if you only want to deliver a notification and dont care about events.
 func SendNotification(conn *dbus.Conn, note Notification) (uint32, error) {
-	actions := len(note.Actions)
-	if (actions % 2) != 0 {
-		return 0, errors.New("actions must be pairs of (key, label)")
+	actions := []string{}
+	if note.Actions != nil {
+		actions = make([]string, 0, len(note.Actions)*2)
+		for _, act := range note.Actions {
+			actions = append(actions, act.Name)
+			actions = append(actions, act.Summary)
+		}
 	}
 
 	var expire int32
@@ -81,7 +92,7 @@ func SendNotification(conn *dbus.Conn, note Notification) (uint32, error) {
 		note.AppIcon,
 		note.Summary,
 		note.Body,
-		note.Actions,
+		actions,
 		note.Hints,
 		expire)
 
