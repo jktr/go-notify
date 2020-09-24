@@ -23,6 +23,8 @@ const (
 	channelBufferSize = 10
 )
 
+type ID uint32
+
 // Notification holds all information needed for creating a notification
 // The zero value for a Notification is legal notification, albeit
 // not a particularly useful one. You should at least set a Summary.
@@ -64,7 +66,7 @@ const (
 
 // SendNotification is provided for convenience.
 // Use if you only want to deliver a notification and dont care about events.
-func SendNotification(conn *dbus.Conn, note *Notification) (uint32, error) {
+func SendNotification(conn *dbus.Conn, note *Notification) (ID, error) {
 	actions := []string{}
 	if note.Actions != nil {
 		actions = make([]string, 0, len(note.Actions)*2)
@@ -170,15 +172,15 @@ func GetServerCapabilities(conn *dbus.Conn) ([]string, error) {
 // Caller is responsible for calling Close() before exiting,
 // to shut down event loop and cleanup dbus registration.
 type Notifier interface {
-	SendNotification(n *Notification) (uint32, error)
+	SendNotification(n *Notification) (ID, error)
 	GetServerCapabilities() ([]string, error)
 	GetServerInformation() (*ServerInformation, error)
-	CloseNotification(id uint32) error
+	CloseNotification(id ID) error
 	Close() error
 }
 
 // NotificationClosedHandler is called when we receive a NotificationClosed signal
-type NotificationClosedHandler func(id uint32, reason CloseReason)
+type NotificationClosedHandler func(id ID, reason CloseReason)
 
 // ActionInvokedHandler is called when we receive a signal that one of the action_keys was invoked.
 //
@@ -260,14 +262,14 @@ func (n *notifier) handleSignal(signal *dbus.Signal) {
 	case signalNotificationClosed:
 		if n.onClosed != nil {
 			go n.onClosed(
-				signal.Body[0].(uint32),
+				signal.Body[0].(ID),
 				CloseReason(signal.Body[1].(uint32)),
 			)
 		}
 	case signalActionInvoked:
 		if n.onAction != nil {
 			go n.onAction(
-				signal.Body[0].(uint32),
+				signal.Body[0].(ID),
 				signal.Body[1].(string),
 			)
 		}
@@ -313,7 +315,7 @@ func (n *notifier) GetServerInformation() (*ServerInformation, error) {
 // The returned ID is always greater than zero. Servers must make sure not to return zero as an ID.
 //
 // If replaces_id is not 0, the returned value is the same value as replaces_id.
-func (n *notifier) SendNotification(note *Notification) (uint32, error) {
+func (n *notifier) SendNotification(note *Notification) (ID, error) {
 	return SendNotification(n.conn, note)
 }
 
