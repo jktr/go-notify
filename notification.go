@@ -191,7 +191,7 @@ type Notifier interface {
 }
 
 // NotificationClosedHandler is called when we receive a NotificationClosed signal
-type NotificationClosedHandler func(*NotificationClosedSignal)
+type NotificationClosedHandler func(id uint32, reason CloseReason)
 
 // ActionInvokedHandler is called when we receive a signal that one of the action_keys was invoked.
 //
@@ -200,15 +200,7 @@ type NotificationClosedHandler func(*NotificationClosedSignal)
 //
 // I suspect this detail is implementation specific for the UI interaction,
 // and does at least happen on XFCE4.
-type ActionInvokedHandler func(*ActionInvokedSignal)
-
-// ActionInvokedSignal holds data from any signal received regarding Actions invoked
-type ActionInvokedSignal struct {
-	// ID of the Notification the action was invoked for
-	ID uint32
-	// Key from the tuple (action_key, label)
-	ActionKey string
-}
+type ActionInvokedHandler func(id uint32, actionName string)
 
 // notifier implements Notifier interface
 type notifier struct {
@@ -241,12 +233,10 @@ func WithOnClosed(h NotificationClosedHandler) option {
 // See also: Notifier
 func New(conn *dbus.Conn, opts ...option) (Notifier, error) {
 	n := &notifier{
-		conn:     conn,
-		signal:   make(chan *dbus.Signal, channelBufferSize),
-		done:     make(chan bool),
-		wg:       &sync.WaitGroup{},
-		onClosed: func(s *NotificationClosedSignal) {},
-		onAction: func(s *ActionInvokedSignal) {},
+		conn:   conn,
+		signal: make(chan *dbus.Signal, channelBufferSize),
+		done:   make(chan bool),
+		wg:     &sync.WaitGroup{},
 	}
 
 	for _, val := range opts {
@@ -287,17 +277,19 @@ func (n notifier) eventLoop() {
 func (n notifier) handleSignal(signal *dbus.Signal) {
 	switch signal.Name {
 	case signalNotificationClosed:
-		nc := &NotificationClosedSignal{
-			ID:     signal.Body[0].(uint32),
-			Reason: Reason(signal.Body[1].(uint32)),
+		if n.onClosed != nil {
+			go n.onClosed(
+				signal.Body[0].(uint32),
+				CloseReason(signal.Body[1].(uint32)),
+			)
 		}
-		n.onClosed(nc)
 	case signalActionInvoked:
-		is := &ActionInvokedSignal{
-			ID:        signal.Body[0].(uint32),
-			ActionKey: signal.Body[1].(string),
+		if n.onAction != nil {
+			go n.onAction(
+				signal.Body[0].(uint32),
+				signal.Body[1].(string),
+			)
 		}
-		n.onAction(is)
 	}
 }
 
@@ -359,40 +351,32 @@ func (n *notifier) CloseNotification(id uint32) (bool, error) {
 	return true, nil
 }
 
-// NotificationClosedSignal holds data for *Closed callbacks from Notifications Interface.
-type NotificationClosedSignal struct {
-	// ID of the Notification the signal was invoked for
-	ID uint32
-	// A reason given if known
-	Reason Reason
-}
-
 // Reason for the closed notification
-type Reason uint32
+type CloseReason uint32
 
 const (
-	// ReasonExpired when a notification expired
-	ReasonExpired Reason = 1
+	// Expired when a notification expired
+	Expired CloseReason = iota + 1
 
-	// ReasonDismissedByUser when a notification has been dismissed by a user
-	ReasonDismissedByUser Reason = 2
+	// DismissedByUser when a notification has been dismissed by a user
+	DismissedByUser
 
-	// ReasonClosedByCall when a notification has been closed by a call to CloseNotification
-	ReasonClosedByCall Reason = 3
+	// ClosedByCall when a notification has been closed by a call to CloseNotification
+	DismissedByCall
 
-	// ReasonUnknown when as notification has been closed for an unknown reason
-	ReasonUnknown Reason = 4
+	// Unknown when as notification has been closed for an unknown reason
+	Unknown
 )
 
-func (r Reason) String() string {
+func (r CloseReason) String() string {
 	switch r {
-	case ReasonExpired:
+	case Expired:
 		return "Expired"
-	case ReasonDismissedByUser:
+	case DismissedByUser:
 		return "DismissedByUser"
-	case ReasonClosedByCall:
+	case DismissedByCall:
 		return "ClosedByCall"
-	case ReasonUnknown:
+	case Unknown:
 		return "Unknown"
 	default:
 		return "Other"
