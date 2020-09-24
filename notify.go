@@ -10,8 +10,8 @@ import (
 const (
 	dbusRemoveMatch            = "org.freedesktop.DBus.RemoveMatch"
 	dbusAddMatch               = "org.freedesktop.DBus.AddMatch"
-	dbusObjectPath             = "/org/freedesktop/Notifications" // the DBUS object path
-	dbusNotificationsInterface = "org.freedesktop.Notifications"  // DBUS Interface
+	dbusObjectPath             = "/org/freedesktop/Notifications"
+	dbusNotificationsInterface = "org.freedesktop.Notifications"
 	signalNotificationClosed   = "org.freedesktop.Notifications.NotificationClosed"
 	signalActionInvoked        = "org.freedesktop.Notifications.ActionInvoked"
 	callGetCapabilities        = "org.freedesktop.Notifications.GetCapabilities"
@@ -90,6 +90,33 @@ func (note *Notification) SetUrgency(urgency Urgency) *Notification {
 		note.Hints = make(map[string]dbus.Variant)
 	}
 	note.Hints["urgency"] = dbus.MakeVariant(urgency)
+	return note
+}
+
+// Convenience function to add a known list of actions
+// to a notification. The actions Parameter must be a
+// list of alternating name and summary parameters.
+// Panics if an odd number of parameters are passed.
+func (note *Notification) SetActions(actions ...string) *Notification {
+	if len(actions)%2 != 0 {
+		panic("must pass a an even number of arguments")
+	}
+
+	acts := make([]NotificationAction, 0, len(actions)/2)
+	var na *NotificationAction
+	for idx, act := range actions {
+		switch idx % 2 {
+		case 0:
+			if na != nil {
+				acts = append(acts, *na)
+			}
+			na = &NotificationAction{Name: act}
+		case 1:
+			na.Summary = act
+		}
+	}
+	acts = append(acts, *na)
+	note.Actions = acts
 	return note
 }
 
