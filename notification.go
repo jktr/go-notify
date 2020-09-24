@@ -54,12 +54,12 @@ type NotificationAction struct {
 type NotificationExpiry int32
 
 const (
+	// Uses server's default expiry behaviour.
+	Server NotificationExpiry = iota - 1
 	// Uses the Notification's Timeout duration.
-	Timeout NotificationExpiry = iota
+	Timeout
 	// Never exire this notification.
 	Never
-	// Uses server's default expiry behaviour.
-	Server
 )
 
 // SendNotification is provided for convenience.
@@ -74,14 +74,9 @@ func SendNotification(conn *dbus.Conn, note Notification) (uint32, error) {
 		}
 	}
 
-	var expire int32
-	switch note.Expire {
-	case Timeout:
+	expire := int32(note.Expire)
+	if expire > 0 {
 		expire = int32(note.Timeout.Milliseconds())
-	case Never:
-		expire = 0
-	case Server:
-		expire = -1
 	}
 
 	obj := conn.Object(dbusNotificationsInterface, dbusObjectPath)
