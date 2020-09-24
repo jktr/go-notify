@@ -2,6 +2,7 @@ package notify
 
 import (
 	"errors"
+	"image"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -90,6 +91,36 @@ func (note *Notification) SetUrgency(urgency Urgency) *Notification {
 		note.Hints = make(map[string]dbus.Variant)
 	}
 	note.Hints["urgency"] = dbus.MakeVariant(urgency)
+	return note
+}
+
+// Spec: https://specifications.freedesktop.org/notification-spec/latest/ar01s05.html
+type ImageData struct {
+	Width         int32
+	Height        int32
+	Rowstride     int32
+	Alpha         bool
+	BitsPerSample int32
+	Channels      int32
+	Data          []byte
+}
+
+// Convenience function to add an embedded image to a Notification.
+func (note *Notification) SetImage(img *image.RGBA) *Notification {
+	imgdat := ImageData{
+		Width:         int32(img.Rect.Dx()),
+		Height:        int32(img.Rect.Dy()),
+		Rowstride:     int32(img.Stride),
+		Alpha:         true,
+		BitsPerSample: 8,
+		Channels:      4,
+		Data:          img.Pix,
+	}
+
+	if note.Hints == nil {
+		note.Hints = make(map[string]dbus.Variant)
+	}
+	note.Hints["image-data"] = dbus.MakeVariant(&imgdat)
 	return note
 }
 

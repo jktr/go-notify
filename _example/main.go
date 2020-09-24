@@ -6,6 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"image"
+	"image/color"
+	"image/draw"
+
 	"github.com/godbus/dbus/v5"
 	"github.com/jktr/go-notify"
 )
@@ -38,6 +42,12 @@ func main() {
 	}
 	n.SetActions("confirm", "Confirm.", "cancel", "Cancel.")
 	n.SetUrgency(notify.Critical)
+
+	// example inline icon: blue square
+	c := color.RGBA{0, 0, 255, 255}
+	img := image.NewRGBA(image.Rect(0, 0, 50, 50))
+	draw.Draw(img, img.Bounds(), &image.Uniform{c}, image.ZP, draw.Src)
+	n.SetImage(img)
 
 	// ... and then show it
 	createdID, err := notify.Send(conn, n)
