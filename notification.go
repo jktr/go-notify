@@ -64,7 +64,7 @@ const (
 
 // SendNotification is provided for convenience.
 // Use if you only want to deliver a notification and dont care about events.
-func SendNotification(conn *dbus.Conn, note Notification) (uint32, error) {
+func SendNotification(conn *dbus.Conn, note *Notification) (uint32, error) {
 	actions := []string{}
 	if note.Actions != nil {
 		actions = make([]string, 0, len(note.Actions)*2)
@@ -120,21 +120,21 @@ type ServerInformation struct {
 //		version		 STRING	  The server's version number.
 //		spec_version STRING	  The specification version the server is compliant with.
 //
-func GetServerInformation(conn *dbus.Conn) (ServerInformation, error) {
+func GetServerInformation(conn *dbus.Conn) (*ServerInformation, error) {
 	obj := conn.Object(dbusNotificationsInterface, dbusObjectPath)
 	if obj == nil {
-		return ServerInformation{}, errors.New("error creating dbus call object")
+		return nil, errors.New("error creating dbus call object")
 	}
 	call := obj.Call(callGetServerInformation, 0)
 	if call.Err != nil {
-		return ServerInformation{}, fmt.Errorf("error calling %v: %v", callGetServerInformation, call.Err)
+		return nil, fmt.Errorf("error calling %v: %v", callGetServerInformation, call.Err)
 	}
 
 	ret := ServerInformation{}
 	if err := call.Store(&ret.Name, &ret.Vendor, &ret.Version, &ret.SpecVersion); err != nil {
 		return &ret, fmt.Errorf("error reading %v return values: %v", callGetServerInformation, err)
 	}
-	return ret, nil
+	return &ret, nil
 }
 
 // GetCapabilities gets the capabilities of the notification server.
@@ -170,10 +170,10 @@ func GetServerCapabilities(conn *dbus.Conn) ([]string, error) {
 // Caller is responsible for calling Close() before exiting,
 // to shut down event loop and cleanup dbus registration.
 type Notifier interface {
-	SendNotification(n Notification) (uint32, error)
+	SendNotification(n *Notification) (uint32, error)
 	GetServerCapabilities() ([]string, error)
-	GetServerInformation() (ServerInformation, error)
-	CloseNotification(id uint32) (bool, error)
+	GetServerInformation() (*ServerInformation, error)
+	CloseNotification(id uint32) error
 	Close() error
 }
 
@@ -255,7 +255,7 @@ func (n *notifier) receiveSignals() {
 }
 
 // signal handler that translates and sends notifications to channels
-func (n notifier) handleSignal(signal *dbus.Signal) {
+func (n *notifier) handleSignal(signal *dbus.Signal) {
 	switch signal.Name {
 	case signalNotificationClosed:
 		if n.onClosed != nil {
@@ -277,7 +277,7 @@ func (n notifier) handleSignal(signal *dbus.Signal) {
 func (n *notifier) GetServerCapabilities() ([]string, error) {
 	return GetServerCapabilities(n.conn)
 }
-func (n *notifier) GetServerInformation() (ServerInformation, error) {
+func (n *notifier) GetServerInformation() (*ServerInformation, error) {
 	return GetServerInformation(n.conn)
 }
 
@@ -313,7 +313,7 @@ func (n *notifier) GetServerInformation() (ServerInformation, error) {
 // The returned ID is always greater than zero. Servers must make sure not to return zero as an ID.
 //
 // If replaces_id is not 0, the returned value is the same value as replaces_id.
-func (n *notifier) SendNotification(note Notification) (uint32, error) {
+func (n *notifier) SendNotification(note *Notification) (uint32, error) {
 	return SendNotification(n.conn, note)
 }
 
