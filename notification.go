@@ -3,7 +3,6 @@ package notify
 import (
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -200,16 +199,14 @@ type NotificationClosedHandler func(id uint32, reason CloseReason)
 //
 // I suspect this detail is implementation specific for the UI interaction,
 // and does at least happen on XFCE4.
-type ActionInvokedHandler func(id uint32, actionName string)
+type ActionInvokedHandler func(id ID, actionName string)
 
 // notifier implements Notifier interface
 type notifier struct {
 	conn     *dbus.Conn
 	signal   chan *dbus.Signal
-	done     chan bool
 	onClosed NotificationClosedHandler
 	onAction ActionInvokedHandler
-	wg       *sync.WaitGroup
 }
 
 // option overrides certain parts of a Notifier
@@ -235,8 +232,6 @@ func New(conn *dbus.Conn, opts ...option) (Notifier, error) {
 	n := &notifier{
 		conn:   conn,
 		signal: make(chan *dbus.Signal, channelBufferSize),
-		done:   make(chan bool),
-		wg:     &sync.WaitGroup{},
 	}
 
 	for _, val := range opts {
@@ -255,20 +250,18 @@ func New(conn *dbus.Conn, opts ...option) (Notifier, error) {
 	n.conn.Signal(n.signal)
 
 	// start eventloop
-	go n.eventLoop()
+	go n.receiveSignals()
 
 	return n, nil
 }
 
-func (n notifier) eventLoop() {
-	n.wg.Add(1)
-	defer n.wg.Done()
+func (n *notifier) receiveSignals() {
 	for {
 		select {
+		case <-n.conn.Context().Done():
+			return
 		case signal := <-n.signal:
 			n.handleSignal(signal)
-		case <-n.done:
-			return
 		}
 	}
 }
@@ -385,8 +378,6 @@ func (r CloseReason) String() string {
 
 // Close cleans up and shuts down signal delivery loop
 func (n *notifier) Close() error {
-	n.done <- true
-
 	// remove signal reception
 	n.conn.RemoveSignal(n.signal)
 
@@ -395,11 +386,6 @@ func (n *notifier) Close() error {
 		dbus.WithMatchObjectPath(dbusObjectPath),
 		dbus.WithMatchInterface(dbusNotificationsInterface),
 	)
-
-	close(n.done)
-
-	// wait for eventloop to shut down...
-	n.wg.Wait()
 
 	return errRemoveMatch
 }
