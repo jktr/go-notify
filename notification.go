@@ -100,6 +100,16 @@ func Send(conn *dbus.Conn, note *Notification) (ID, error) {
 	return ret, err
 }
 
+func Dismiss(conn *dbus.Conn, id ID) error {
+	if id == 0 {
+		return errors.New("notification IDs must be greater than zero")
+	}
+
+	obj := conn.Object(dbusNotificationsInterface, dbusObjectPath)
+	call := obj.Call(callCloseNotification, 0, id)
+	return call.Err
+}
+
 // ServerInfo is a holder for information returned by
 // GetServerInformation call.
 type ServerInfo struct {
@@ -320,9 +330,7 @@ func (n *notifier) Send(note *Notification) (ID, error) {
 // The NotificationClosed (dbus) signal is emitted by this method.
 // If the notification no longer exists, an empty D-BUS Error message is sent back.
 func (n *notifier) Dismiss(id ID) error {
-	obj := n.conn.Object(dbusNotificationsInterface, dbusObjectPath)
-	call := obj.Call(callCloseNotification, 0, id)
-	return call.Err
+	return Dismiss(n.conn, id)
 }
 
 // Reason for the closed notification
