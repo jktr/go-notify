@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -37,9 +38,23 @@ type Notification struct {
 	// Actions are tuples of (action_key, label), e.g.: []string{"cancel", "Cancel", "open", "Open"}
 	Actions []string
 	Hints   map[string]dbus.Variant
-	// ExpireTimeout: milliseconds to show notification
-	ExpireTimeout int32
+
+	// Strategy for notification expiration
+	Expire NotificationExpiry
+	// Timeout for the eponymous NotificationExpiry Strategy
+	Timeout time.Duration
 }
+
+type NotificationExpiry int32
+
+const (
+	// Uses the Notification's Timeout duration.
+	Timeout NotificationExpiry = iota
+	// Never exire this notification.
+	Never
+	// Uses server's default expiry behaviour.
+	Server
+)
 
 // SendNotification is provided for convenience.
 // Use if you only want to deliver a notification and dont care about events.
@@ -47,6 +62,16 @@ func SendNotification(conn *dbus.Conn, note Notification) (uint32, error) {
 	actions := len(note.Actions)
 	if (actions % 2) != 0 {
 		return 0, errors.New("actions must be pairs of (key, label)")
+	}
+
+	var expire int32
+	switch note.Expire {
+	case Timeout:
+		expire = int32(note.Timeout.Milliseconds())
+	case Never:
+		expire = 0
+	case Server:
+		expire = -1
 	}
 
 	obj := conn.Object(dbusNotificationsInterface, dbusObjectPath)
@@ -58,10 +83,12 @@ func SendNotification(conn *dbus.Conn, note Notification) (uint32, error) {
 		note.Body,
 		note.Actions,
 		note.Hints,
-		note.ExpireTimeout)
+		expire)
+
 	if call.Err != nil {
 		return 0, fmt.Errorf("error sending notification: %w", call.Err)
 	}
+
 	var ret uint32
 	err := call.Store(&ret)
 	if err != nil {
