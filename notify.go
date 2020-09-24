@@ -75,6 +75,24 @@ const (
 	Never
 )
 
+// Spec: https://specifications.freedesktop.org/notification-spec/latest/ar01s07.html
+type Urgency byte
+
+const (
+	Low Urgency = iota
+	Normal
+	Critical
+)
+
+// Convenience function to add the urgency hint to a Notification.
+func (note *Notification) SetUrgency(urgency Urgency) *Notification {
+	if note.Hints == nil {
+		note.Hints = make(map[string]dbus.Variant)
+	}
+	note.Hints["urgency"] = dbus.MakeVariant(urgency)
+	return note
+}
+
 // See Notifier.Send
 // This is provided for convenience; use Notifier if
 // you'd like notification close events or user actions.
