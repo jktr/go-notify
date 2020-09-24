@@ -2,7 +2,6 @@ package notify
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -93,7 +92,7 @@ func SendNotification(conn *dbus.Conn, note *Notification) (ID, error) {
 		expire)
 
 	if call.Err != nil {
-		return 0, fmt.Errorf("error sending notification: %w", call.Err)
+		return 0, call.Err
 	}
 
 	var ret ID
@@ -127,16 +126,15 @@ func GetServerInformation(conn *dbus.Conn) (*ServerInformation, error) {
 	if obj == nil {
 		return nil, errors.New("error creating dbus call object")
 	}
+
 	call := obj.Call(callGetServerInformation, 0)
 	if call.Err != nil {
-		return nil, fmt.Errorf("error calling %v: %v", callGetServerInformation, call.Err)
+		return nil, call.Err
 	}
 
 	ret := ServerInformation{}
-	if err := call.Store(&ret.Name, &ret.Vendor, &ret.Version, &ret.SpecVersion); err != nil {
-		return &ret, fmt.Errorf("error reading %v return values: %v", callGetServerInformation, err)
-	}
-	return &ret, nil
+	err := call.Store(&ret.Name, &ret.Vendor, &ret.Version, &ret.SpecVersion)
+	return &ret, err
 }
 
 // GetCapabilities gets the capabilities of the notification server.
@@ -149,8 +147,9 @@ func GetServerCapabilities(conn *dbus.Conn) ([]string, error) {
 	obj := conn.Object(dbusNotificationsInterface, dbusObjectPath)
 	call := obj.Call(callGetCapabilities, 0)
 	if call.Err != nil {
-		return []string{}, call.Err
+		return nil, call.Err
 	}
+
 	var ret []string
 	err := call.Store(&ret)
 	return ret, err
@@ -229,13 +228,13 @@ func New(conn *dbus.Conn, opts ...option) (Notifier, error) {
 	}
 
 	// add a listener (matcher) in dbus for signals to Notification interface.
-	err := n.conn.AddMatchSignal(
+	if err := n.conn.AddMatchSignal(
 		dbus.WithMatchObjectPath(dbusObjectPath),
 		dbus.WithMatchInterface(dbusNotificationsInterface),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error registering for signals in dbus: %w", err)
+	); err != nil {
+		return nil, err
 	}
+
 	// register in dbus for signal delivery
 	n.conn.Signal(n.signal)
 
