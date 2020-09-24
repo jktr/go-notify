@@ -94,12 +94,9 @@ func SendNotification(conn *dbus.Conn, note Notification) (uint32, error) {
 		return 0, fmt.Errorf("error sending notification: %w", call.Err)
 	}
 
-	var ret uint32
+	var ret ID
 	err := call.Store(&ret)
-	if err != nil {
-		return ret, fmt.Errorf("error getting uint32 ret value: %w", err)
-	}
-	return ret, nil
+	return ret, err
 }
 
 // ServerInformation is a holder for information returned by
@@ -134,9 +131,8 @@ func GetServerInformation(conn *dbus.Conn) (ServerInformation, error) {
 	}
 
 	ret := ServerInformation{}
-	err := call.Store(&ret.Name, &ret.Vendor, &ret.Version, &ret.SpecVersion)
-	if err != nil {
-		return ret, fmt.Errorf("error reading %v return values: %v", callGetServerInformation, err)
+	if err := call.Store(&ret.Name, &ret.Vendor, &ret.Version, &ret.SpecVersion); err != nil {
+		return &ret, fmt.Errorf("error reading %v return values: %v", callGetServerInformation, err)
 	}
 	return ret, nil
 }
@@ -155,10 +151,7 @@ func GetCapabilities(conn *dbus.Conn) ([]string, error) {
 	}
 	var ret []string
 	err := call.Store(&ret)
-	if err != nil {
-		return ret, err
-	}
-	return ret, nil
+	return ret, err
 }
 
 // Notifier is an interface implementing the operations supported by the
@@ -330,13 +323,10 @@ func (n *notifier) SendNotification(note Notification) (uint32, error) {
 //
 // The NotificationClosed (dbus) signal is emitted by this method.
 // If the notification no longer exists, an empty D-BUS Error message is sent back.
-func (n *notifier) CloseNotification(id uint32) (bool, error) {
+func (n *notifier) CloseNotification(id ID) error {
 	obj := n.conn.Object(dbusNotificationsInterface, dbusObjectPath)
 	call := obj.Call(callCloseNotification, 0, id)
-	if call.Err != nil {
-		return false, call.Err
-	}
-	return true, nil
+	return call.Err
 }
 
 // Reason for the closed notification
@@ -376,11 +366,9 @@ func (n *notifier) Close() error {
 	// remove signal reception
 	n.conn.RemoveSignal(n.signal)
 
-	// unregister in dbus:
-	errRemoveMatch := n.conn.RemoveMatchSignal(
+	// unregister in dbus
+	return n.conn.RemoveMatchSignal(
 		dbus.WithMatchObjectPath(dbusObjectPath),
 		dbus.WithMatchInterface(dbusNotificationsInterface),
 	)
-
-	return errRemoveMatch
 }
