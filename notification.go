@@ -251,27 +251,22 @@ func (n *notifier) receiveSignals() {
 		case <-n.conn.Context().Done():
 			return
 		case signal := <-n.signal:
-			n.handleSignal(signal)
-		}
-	}
-}
-
-// signal handler that translates and sends notifications to channels
-func (n *notifier) handleSignal(signal *dbus.Signal) {
-	switch signal.Name {
-	case signalNotificationClosed:
-		if n.onClosed != nil {
-			go n.onClosed(
-				signal.Body[0].(ID),
-				CloseReason(signal.Body[1].(uint32)),
-			)
-		}
-	case signalActionInvoked:
-		if n.onAction != nil {
-			go n.onAction(
-				signal.Body[0].(ID),
-				signal.Body[1].(string),
-			)
+			switch signal.Name {
+			case signalNotificationClosed:
+				if n.onClosed != nil {
+					go n.onClosed(
+						signal.Body[0].(ID),
+						CloseReason(signal.Body[1].(uint32)),
+					)
+				}
+			case signalActionInvoked:
+				if n.onAction != nil {
+					go n.onAction(
+						signal.Body[0].(ID),
+						signal.Body[1].(string),
+					)
+				}
+			}
 		}
 	}
 }
