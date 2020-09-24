@@ -139,14 +139,14 @@ func (n *notifier) receiveSignals() {
 			case signalNotificationClosed:
 				if n.onClosed != nil {
 					go n.onClosed(
-						signal.Body[0].(ID),
+						ID(signal.Body[0].(uint32)),
 						CloseReason(signal.Body[1].(uint32)),
 					)
 				}
 			case signalActionInvoked:
 				if n.onAction != nil {
 					go n.onAction(
-						signal.Body[0].(ID),
+						ID(signal.Body[0].(uint32)),
 						signal.Body[1].(string),
 					)
 				}
