@@ -1,6 +1,10 @@
 package notify
 
-import "github.com/godbus/dbus/v5"
+import (
+	"context"
+
+	"github.com/godbus/dbus/v5"
+)
 
 // Notifier is an interface implementing the operations
 // supported by the Freedesktop DBus Notifications object.
@@ -76,6 +80,8 @@ type ActionInvokedHandler func(id ID, actionName string)
 type notifier struct {
 	conn     *dbus.Conn
 	signal   chan *dbus.Signal
+	ctx      context.Context
+	shutdown context.CancelFunc
 	onClosed NotificationClosedHandler
 	onAction ActionInvokedHandler
 }
@@ -96,9 +102,13 @@ func WithOnClosed(h NotificationClosedHandler) option {
 }
 
 func New(conn *dbus.Conn, opts ...option) (Notifier, error) {
+	ctx, cancel := context.WithCancel(conn.Context())
+
 	n := &notifier{
-		conn:   conn,
-		signal: make(chan *dbus.Signal, channelBufferSize),
+		conn:     conn,
+		signal:   make(chan *dbus.Signal, channelBufferSize),
+		ctx:      ctx,
+		shutdown: cancel,
 	}
 
 	for _, val := range opts {
@@ -122,7 +132,7 @@ func New(conn *dbus.Conn, opts ...option) (Notifier, error) {
 func (n *notifier) receiveSignals() {
 	for {
 		select {
-		case <-n.conn.Context().Done():
+		case <-n.ctx.Done():
 			return
 		case signal := <-n.signal:
 			switch signal.Name {
@@ -147,10 +157,10 @@ func (n *notifier) receiveSignals() {
 
 // Release Subscriptions to Notification Events
 func (n *notifier) Close() error {
-	// remove signal reception
-	n.conn.RemoveSignal(n.signal)
+	n.shutdown()
 
 	// unsubscribe
+	n.conn.RemoveSignal(n.signal)
 	return n.conn.RemoveMatchSignal(
 		dbus.WithMatchObjectPath(dbusObjectPath),
 		dbus.WithMatchInterface(dbusNotificationsInterface),
