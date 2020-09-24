@@ -65,7 +65,7 @@ const (
 
 // SendNotification is provided for convenience.
 // Use if you only want to deliver a notification and dont care about events.
-func SendNotification(conn *dbus.Conn, note *Notification) (ID, error) {
+func Send(conn *dbus.Conn, note *Notification) (ID, error) {
 	actions := []string{}
 	if note.Actions != nil {
 		actions = make([]string, 0, len(note.Actions)*2)
@@ -100,16 +100,16 @@ func SendNotification(conn *dbus.Conn, note *Notification) (ID, error) {
 	return ret, err
 }
 
-// ServerInformation is a holder for information returned by
+// ServerInfo is a holder for information returned by
 // GetServerInformation call.
-type ServerInformation struct {
+type ServerInfo struct {
 	Name        string
 	Vendor      string
 	Version     string
 	SpecVersion string
 }
 
-// GetServerInformation returns the information on the server.
+// GetServerInfo returns the information on the server.
 //
 // org.freedesktop.Notifications.GetServerInformation
 //
@@ -121,7 +121,7 @@ type ServerInformation struct {
 //		version		 STRING	  The server's version number.
 //		spec_version STRING	  The specification version the server is compliant with.
 //
-func GetServerInformation(conn *dbus.Conn) (*ServerInformation, error) {
+func GetServerInfo(conn *dbus.Conn) (*ServerInfo, error) {
 	obj := conn.Object(dbusNotificationsInterface, dbusObjectPath)
 	if obj == nil {
 		return nil, errors.New("error creating dbus call object")
@@ -132,7 +132,7 @@ func GetServerInformation(conn *dbus.Conn) (*ServerInformation, error) {
 		return nil, call.Err
 	}
 
-	ret := ServerInformation{}
+	ret := ServerInfo{}
 	err := call.Store(&ret.Name, &ret.Vendor, &ret.Version, &ret.SpecVersion)
 	return &ret, err
 }
@@ -171,10 +171,10 @@ func GetServerCapabilities(conn *dbus.Conn) ([]string, error) {
 // Caller is responsible for calling Close() before exiting,
 // to shut down event loop and cleanup dbus registration.
 type Notifier interface {
-	SendNotification(n *Notification) (ID, error)
+	Send(n *Notification) (ID, error)
+	Dismiss(id ID) error
 	GetServerCapabilities() ([]string, error)
-	GetServerInformation() (*ServerInformation, error)
-	CloseNotification(id ID) error
+	GetServerInfo() (*ServerInfo, error)
 	Close() error
 }
 
@@ -273,11 +273,11 @@ func (n *notifier) receiveSignals() {
 func (n *notifier) GetServerCapabilities() ([]string, error) {
 	return GetServerCapabilities(n.conn)
 }
-func (n *notifier) GetServerInformation() (*ServerInformation, error) {
-	return GetServerInformation(n.conn)
+func (n *notifier) GetServerInfo() (*ServerInfo, error) {
+	return GetServerInfo(n.conn)
 }
 
-// SendNotification sends a notification to the notification server and returns the ID or an error.
+// Send sends a notification to the notification server and returns the ID or an error.
 //
 // Implements dbus call:
 //
@@ -309,17 +309,17 @@ func (n *notifier) GetServerInformation() (*ServerInformation, error) {
 // The returned ID is always greater than zero. Servers must make sure not to return zero as an ID.
 //
 // If replaces_id is not 0, the returned value is the same value as replaces_id.
-func (n *notifier) SendNotification(note *Notification) (ID, error) {
-	return SendNotification(n.conn, note)
+func (n *notifier) Send(note *Notification) (ID, error) {
+	return Send(n.conn, note)
 }
 
-// CloseNotification causes a notification to be forcefully closed and removed from the user's view.
+// Dismiss causes a notification to be forcefully closed and removed from the user's view.
 // It can be used, for example, in the event that what the notification pertains to is no longer relevant,
 // or to cancel a notification with no expiration time.
 //
 // The NotificationClosed (dbus) signal is emitted by this method.
 // If the notification no longer exists, an empty D-BUS Error message is sent back.
-func (n *notifier) CloseNotification(id ID) error {
+func (n *notifier) Dismiss(id ID) error {
 	obj := n.conn.Object(dbusNotificationsInterface, dbusObjectPath)
 	call := obj.Call(callCloseNotification, 0, id)
 	return call.Err
